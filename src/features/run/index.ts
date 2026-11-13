@@ -1,3 +1,4 @@
+import { registerBazelContext } from "./bazelContext";
 /**
  * Run configurations, the title bar run widget, the Run tool window (console +
  * test runner) and run/debug/stop actions.
@@ -440,6 +441,7 @@ export function activate(): () => void {
       const after = s.project.workspace?.projects ?? [s.project.root];
       for (const root of before) if (!after.includes(root)) void cleanupRemovedProject(root);
     }),
+    registerBazelContext(),
     registerEditorContribution({ id: "run.targets", order: 55, extensions: runGutter }),
     registerEditorContribution({ id: "run.npmScripts", order: 58, extensions: npmGutter }),
     registerMenuGroup({

@@ -1,4 +1,11 @@
 {
+  "Bazel": "Bazel 工具",
+  "Copy Target Label": "复制目标标签",
+  "Jump to BUILD file": "跳转到 BUILD 文件",
+  "Run all tests with Coverage": "运行所有测试并收集覆盖率",
+  "The target's BUILD file is unavailable.": "目标的 BUILD 文件不可用。",
+  "Bazel did not produce an LCOV coverage report.": "Bazel 未生成 LCOV 覆盖率报告。",
+  "Bazel coverage report unavailable": "Bazel 覆盖率报告不可用",
   "Fix ESLint Problems": "修复 ESLint 问题",
   "No ESLint problems to fix": "没有可修复的 ESLint 问题",
   "Pin ({count})": "固定（{count}）",

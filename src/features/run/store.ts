@@ -1,3 +1,4 @@
+import { bazelCoverageFeedback } from "./bazelCoverage";
 /**
  * Run state: configurations, the selected configuration and run sessions
  * (one Run tool window tab each). Output streams through a Channel into a
@@ -854,6 +855,8 @@ export async function startRun(
   const rt = runtimes.get(sessionId)!;
   const generation = rt.generation;
   if (options.onLine) rt.lineListeners.push(options.onLine);
+  const bazelCoverage = bazelCoverageFeedback(config);
+  if (bazelCoverage) rt.lineListeners.push(bazelCoverage.onLine);
   let browserOpened = false;
   rt.lineListeners.push((line) => {
     if (config.kind === "tomcat" && /Server startup in/.test(line)) {
@@ -867,7 +870,10 @@ export async function startRun(
     if (port !== null && runtimes.get(sessionId)?.generation === generation && getSession(sessionId)?.httpPort !== port)
       patchSession(sessionId, { httpPort: port });
   });
-  rt.onExit = options.onExit;
+  rt.onExit = (exitCode, stopped) => {
+    bazelCoverage?.onExit(exitCode, stopped);
+    options.onExit?.(exitCode, stopped);
+  };
   rt.beforeStop = options.beforeStop;
   try {
     if (options.show !== false && config.focusToolWindow) toolWindowService().show("run", true);
@@ -1302,13 +1308,14 @@ export function waitForExit(sessionIds: readonly string[], timeoutMs: number | n
  * the one it ran with when that was deleted or never saved. A derived run (Rerun Failed Tests) keeps its tests.
  */
 export function rerunConfig(session: Pick<RunSession, "config" | "baseConfig">): RunConfig {
-  if (session.baseConfig) return session.config;
+  if (session.baseConfig || session.config.params?.contextSource === "bazel") return session.config;
   return useRun.getState().configs.find((c) => c.id === session.config.id) ?? session.config;
 }
 
 /** The session's original configuration, as saved now (see {@link rerunConfig}). */
 export function baseConfigOf(session: RunSession): RunConfig {
   const base = session.baseConfig ?? session.config;
+  if (base.params?.contextSource === "bazel") return base;
   return useRun.getState().configs.find((c) => c.id === base.id) ?? base;
 }
 

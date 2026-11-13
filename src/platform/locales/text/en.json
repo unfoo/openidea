@@ -1,4 +1,11 @@
 {
+  "Bazel": "Bazel",
+  "Copy Target Label": "Copy Target Label",
+  "Jump to BUILD file": "Jump to BUILD file",
+  "Run all tests with Coverage": "Run all tests with Coverage",
+  "The target's BUILD file is unavailable.": "The target's BUILD file is unavailable.",
+  "Bazel did not produce an LCOV coverage report.": "Bazel did not produce an LCOV coverage report.",
+  "Bazel coverage report unavailable": "Bazel coverage report unavailable",
   "Fix ESLint Problems": "Fix ESLint Problems",
   "No ESLint problems to fix": "No ESLint problems to fix",
   "Pin ({count})": "Pin ({count})",
