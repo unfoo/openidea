@@ -1735,6 +1735,7 @@ impl views::Host for StoreData {
                 cmd,
                 &self.cancel.token(),
                 self.remaining(),
+                self.background,
             )
             .map_err(to_wit))
     }

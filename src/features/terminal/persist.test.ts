@@ -3,6 +3,7 @@ import { decode } from "./persist";
 import { useProject } from "@/platform/project";
 import {
   closeAll,
+  closeTab,
   getSession,
   layoutGroups,
   newTab,
@@ -83,6 +84,35 @@ describe("terminal tab memory", () => {
     expect(getSession(tab.session)).toBe(session);
     expect(state().tabs).toContainEqual(tab);
     expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it("starts and reuses a background plugin terminal without selecting it", async () => {
+    useProject.setState({ project: { root: "/background-project" } } as never);
+    const { loadTerminalRuntime } = await import("./loader");
+    const runtime = await loadTerminalRuntime();
+    const foreground = newTab("/background-project", "Editing session");
+    const before = { activeTab: state().activeTab, selected: state().selected };
+    const onExit = vi.fn();
+    const request = {
+      kind: "terminal" as const,
+      operation: "background-import",
+      background: true,
+      title: "Automatic import",
+      program: "/approved/importer",
+      cwd: "/background-project",
+      onExit,
+    };
+    await runtime.pluginSession(request);
+    const background = state().tabs.find((tab) => tab.id !== foreground.id)!;
+    expect(getSession(background.session)?.state.status).toBe("running");
+    expect(state().activeTab).toBe(before.activeTab);
+    expect(state().selected).toEqual(before.selected);
+    await runtime.pluginSession(request);
+    expect(state().tabs).toHaveLength(2);
+    expect(state().activeTab).toBe(foreground.id);
+    closeTab(background.id);
+    expect(onExit).toHaveBeenCalledWith(null, true);
+    expect(state().activeTab).toBe(foreground.id);
   });
 
   it("rejects a stored value that is not this version", () => {

@@ -1829,8 +1829,11 @@ replacement argv for failed tests or test-tree selections; its default returns
 for the name-path contract and unsupported cases.
 
 `host::open_terminal_session(key, title, &Command::new("tool"))` opens a normal
-Terminal tab in this window's project root. Reopening the same key focuses its
-running tab and returns the same id; after exit a new call starts a new operation.
+Terminal tab in this window's project root. Commands and user action events
+show and focus it. Other event handlers start or reuse the terminal in the
+background, preserving editor focus and the selected terminal tab. Its output
+and Stop controls remain available in Terminal. Reopening the same key returns
+the running operation id; after exit a new call starts a new operation.
 The host rechecks the program pin and trust at PTY spawn. Environment entries
 have the same append-only validation and collision errors as `run-command`.
 `write_terminal(key, text)` requires the owned live session and project trust,

@@ -135,6 +135,7 @@ pub trait HostApi: Send + Sync {
         Err(HostError::Failed("runs unavailable".into()))
     }
     /// Opens/reuses a keyed terminal, retained across idle instance reclamation.
+    #[allow(clippy::too_many_arguments)]
     fn open_terminal_session(
         &self,
         client: &str,
@@ -143,8 +144,9 @@ pub trait HostApi: Send + Sync {
         cmd: ProcessCommand,
         cancel: &CancellationToken,
         timeout: Duration,
+        background: bool,
     ) -> Result<String, HostError> {
-        let _ = (client, key, title, cmd, cancel, timeout);
+        let _ = (client, key, title, cmd, cancel, timeout, background);
         Err(HostError::Failed("terminals unavailable".into()))
     }
     /// Writes only to an owned, live terminal.
@@ -853,6 +855,7 @@ pub struct StoreData {
     /// The running call is a command or an event.
     pub(crate) interactive: bool,
     pub(crate) net_interactive: bool,
+    pub(crate) background: bool,
     /// Editor window for pick, pick-many, input and confirm during action resolution.
     pub(crate) action_prompt_client: Option<String>,
     /// Tasks begun by the running call and not ended yet.
@@ -1099,6 +1102,7 @@ impl Runtime {
             invocation: Invocation::default(),
             interactive: false,
             net_interactive: false,
+            background: false,
             action_prompt_client: None,
             open_tasks: Vec::new(),
             last_report: None,
@@ -1854,10 +1858,14 @@ impl Runtime {
 
     /// Delivers a batch of events (from the window in `invocation`).
     pub fn handle_events(&mut self, events: Vec<WorkbenchEvent>, invocation: Invocation) -> Result<(), CallError> {
+        let background = !events
+            .iter()
+            .any(|event| matches!(event, WorkbenchEvent::ActionPerformed(_) | WorkbenchEvent::ContentTabAction(_)));
         let events: Vec<wit_events::Event> = events.into_iter().take(MAX_BATCH).map(event_to_wit).collect();
         self.call(invocation, self.limits.timeout, |e, store| {
             let ctx = store.data_mut().new_invocation()?;
             store.data_mut().interactive = true;
+            store.data_mut().background = background;
             let r = e.plugin.openidea_plugin_event_handler().call_handle(
                 &mut *store,
                 &events,
@@ -1896,6 +1904,7 @@ impl Runtime {
         data.invocation = Invocation::default();
         data.interactive = false;
         data.net_interactive = false;
+        data.background = false;
         data.action_prompt_client = None;
         // Tasks don't outlive the call that began them.
         for id in std::mem::take(&mut data.open_tasks) {

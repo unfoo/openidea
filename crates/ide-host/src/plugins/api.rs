@@ -1417,6 +1417,7 @@ impl HostApi for PluginApi {
         );
         Ok(id)
     }
+    #[allow(clippy::too_many_arguments)]
     fn open_terminal_session(
         &self,
         client: &str,
@@ -1425,6 +1426,7 @@ impl HostApi for PluginApi {
         cmd: ProcessCommand,
         cancel: &CancellationToken,
         timeout: Duration,
+        background: bool,
     ) -> Result<String, HostError> {
         super::execution::label(&key, 128)?;
         super::execution::label(&title, 256)?;
@@ -1459,6 +1461,7 @@ impl HostApi for PluginApi {
         };
         let request = super::WindowRequest::Terminal {
             operation: id.clone(),
+            background,
             key,
             title,
             program: binary.into(),

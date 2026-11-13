@@ -179,7 +179,7 @@ function defaultTabName(base = workflowSettings().terminal.tabName): string {
 }
 
 /** Opens a tab in the active tab's group. */
-export function newTab(cwd: string, name?: string, command?: SessionOptions["command"]): TerminalTab {
+export function newTab(cwd: string, name?: string, command?: SessionOptions["command"], activate = true): TerminalTab {
   const session = createSession(cwd, command);
   const { tabs, layout, activeTab } = useTerminals.getState();
   const tab: TerminalTab = {
@@ -192,8 +192,8 @@ export function newTab(cwd: string, name?: string, command?: SessionOptions["com
   };
   useTerminals.setState((s) => ({
     tabs: [...s.tabs, tab],
-    selected: { ...s.selected, [tab.group]: tab.id },
-    activeTab: tab.id,
+    selected: activate || !s.selected[tab.group] ? { ...s.selected, [tab.group]: tab.id } : s.selected,
+    activeTab: activate ? tab.id : (s.activeTab ?? tab.id),
   }));
   return tab;
 }
@@ -638,6 +638,7 @@ const pluginSessions = new Map<string, string>();
 export async function pluginSession(a: {
   kind: "terminal";
   operation: string;
+  background?: boolean;
   title?: string;
   program?: string;
   args?: string[];
@@ -649,20 +650,25 @@ export async function pluginSession(a: {
   const tab = useTerminals.getState().tabs.find((t) => t.id === pluginSessions.get(a.operation));
   const session = tab && getSession(tab.session);
   if (session && session.state.status === "running") {
-    selectTab(tab.id);
+    if (!a.background) selectTab(tab.id);
     return;
   }
   if (!a.cwd || !a.program) throw new Error("Invalid terminal request");
-  const created = newTab(a.cwd, a.title, {
-    program: a.program,
-    args: a.args ?? [],
-    env: a.env,
-    spawn: a.spawn,
-    onExit: (code, closed) => {
-      pluginSessions.delete(a.operation);
-      a.onExit(code, closed);
+  const created = newTab(
+    a.cwd,
+    a.title,
+    {
+      program: a.program,
+      args: a.args ?? [],
+      env: a.env,
+      spawn: a.spawn,
+      onExit: (code, closed) => {
+        pluginSessions.delete(a.operation);
+        a.onExit(code, closed);
+      },
     },
-  });
+    !a.background,
+  );
   pluginSessions.set(a.operation, created.id);
   const started = getSession(created.session)!;
   await started.start();

@@ -509,6 +509,8 @@ pub enum WindowRequest {
     #[serde(rename_all = "camelCase")]
     Terminal {
         operation: String,
+        #[serde(default)]
+        background: bool,
         key: String,
         title: String,
         program: ide_core::IpcPath,

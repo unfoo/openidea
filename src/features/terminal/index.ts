@@ -150,9 +150,12 @@ export function activate(): () => void {
         when: "projectOpen",
         run: async ({ arg }) => {
           const rt = await loadTerminalRuntime();
-          await rt.pluginSession(arg as Parameters<typeof rt.pluginSession>[0]);
-          toolWindowService().show(WINDOW, true);
-          focusActiveSoon();
+          const request = arg as Parameters<typeof rt.pluginSession>[0];
+          await rt.pluginSession(request);
+          if (!request.background) {
+            toolWindowService().show(WINDOW, true);
+            focusActiveSoon();
+          }
         },
       },
       {

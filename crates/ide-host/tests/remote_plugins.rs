@@ -679,10 +679,11 @@ async fn api14_stage3_remote_terminal_pins_and_exit_events_stay_on_the_execution
         .find_map(|m| match &m.event {
             PluginEvent::WindowRequest {
                 request_id,
-                request: ide_host::plugins::WindowRequest::Terminal { operation, .. },
+                request: ide_host::plugins::WindowRequest::Terminal { operation, background, .. },
                 ..
             } => {
                 assert_eq!(m.window.as_deref(), Some("main"));
+                assert!(!background, "an explicit terminal command stays in the foreground");
                 Some((request_id.clone(), operation.clone()))
             }
             _ => None,
