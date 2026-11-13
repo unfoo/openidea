@@ -1,3 +1,4 @@
+import { bazelTargetConfig } from "./bazelTargets";
 /**
  * Run-context producers (IDEA's `RunConfigurationProducer`s): the temporary
  * configuration that runs the element at the caret (a test, a test class, a
@@ -943,6 +944,7 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
 
 /** Last line (0-based, inclusive) of the declaration starting at `target.line`. */
 export function targetEnd(lines: readonly string[], target: RunTarget, python: boolean): number {
+  if (target.endLine != null) return target.endLine;
   const start = target.line;
   if (python) {
     const indent = /^\s*/.exec(lines[start] ?? "")![0].length;
@@ -1034,6 +1036,10 @@ export function fileTargets(
 function elementProduction(input: ContextInput, env: ToolEnv, target: RunTarget): Produced | null {
   const s = site(input);
   const rel = s.idPath;
+  if (target.bazelLabel) {
+    const config = input.root && bazelTargetConfig(target, input.configs, input.root);
+    return config ? { name: config.name, scope: "element", config } : null;
+  }
   if (target.kind === "generate") {
     const config = goGenerateConfig(input.path, "file", input.content?.split("\n")[target.line]);
     return config ? { name: config.name, scope: "element", config } : null;

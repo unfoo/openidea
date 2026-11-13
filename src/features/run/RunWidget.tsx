@@ -20,7 +20,8 @@ export function RunWidget() {
   const selectedId = useRun((s) => s.selectedId);
   const sessions = useRun((s) => s.sessions);
   const chooserOpen = useRun((s) => s.chooserOpen);
-  const selected = configs.find((c) => c.id === selectedId);
+  const selectedContext = useRun((s) => s.selectedContext);
+  const selected = selectedContext?.id === selectedId ? selectedContext : configs.find((c) => c.id === selectedId);
   const currentFile = selectedId === CURRENT_FILE;
   // Remote JVM Debug and the like: only Debug applies, as in IDEA.
   const debugOnly = !!selected && isDebugOnly(selected);

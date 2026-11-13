@@ -91,6 +91,7 @@ export function targetTitle(t: RunTarget): string {
 }
 
 export function label(t: RunTarget): string {
+  if (t.bazelLabel) return t.bazelLabel;
   if (t.kind === "main") return t.className ? `${t.name}.main()` : "main";
   return t.name;
 }
@@ -269,13 +270,27 @@ export function runGutter(ctx: EditorDocContext): Extension {
       initialSpacer: () => emptyGutterSpacer,
       updateSpacer: (_spacer, update) => (update.state.field(targetsField).length ? runSpacer : emptyGutterSpacer),
       domEventHandlers: {
+        contextmenu: (view, block, event) => {
+          const target = view.state.field(targetsField).find((t) => t.pos === block.from);
+          if (!target) return false;
+          event.preventDefault();
+          showTargetMenu(view, target, path, { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY });
+          return true;
+        },
         mousedown: (view, block, event) => {
           const target = view.state.field(targetsField).find((t) => t.pos === block.from);
           if (!target || (event as MouseEvent).button !== 0) return false;
           const el = (event.target as HTMLElement).closest?.(`.${styles.runMarker}`) as HTMLElement | null;
           const rect = (el ?? (event.target as HTMLElement)).getBoundingClientRect();
           event.preventDefault();
-          showTargetMenu(view, target, path, { x: rect.left, y: rect.bottom + 2 });
+          const content = view.state.doc.toString();
+          const choices = produceContextChoices(targetInput(path, content, target.line), OPTIMISTIC);
+          const bazel = target.bazelLabel || choices.some((p) => p.config?.id.startsWith("plugin:unfoo.bazel:"));
+          if (bazel && choices.length === 1 && !(event as MouseEvent).altKey) {
+            void launch(target, path, false, content);
+          } else {
+            showTargetMenu(view, target, path, { x: rect.left, y: rect.bottom + 2 });
+          }
           return true;
         },
       },

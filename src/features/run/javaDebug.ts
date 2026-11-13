@@ -9,6 +9,7 @@
  * `exec:java`) get the agent through `MAVEN_OPTS`; any other configuration set to the Java
  * debugger (a script such as `catalina.sh run`) through `JAVA_TOOL_OPTIONS`, which every JVM reads.
  */
+import { isBazelJUnit } from "./bazel";
 import { executeAction } from "@/platform/actions";
 import { call, commands, type RunConfig } from "@/platform/ipc";
 import {
@@ -71,6 +72,13 @@ export function jdwpLaunch(config: RunConfig, jdwpPort?: number): RunConfig | nu
   config = applyBuildPolicyToCommand(config);
   if (config.kind === "tomcat") return { ...config, params: { ...config.params, tomcatDebug: "true" } };
   const args = config.args;
+  if (isBazelJUnit(config)) {
+    const kept = args.filter(
+      (arg, index) =>
+        !arg.startsWith("--debug-jvm-agent=") && arg !== "--debug-jvm-agent" && args[index - 1] !== "--debug-jvm-agent",
+    );
+    return { ...config, args: [...kept, `--debug-jvm-agent=${JDWP_AGENT}`] };
+  }
   if (config.kind === "jar-application") return { ...config, args: [JDWP_AGENT, ...args] };
   // A single source file (`java Hi.java`): the agent goes before the file. Compiled first
   // (`javac … && java -cp …`): through `JDK_JAVA_OPTIONS`, which only the `java` launcher reads.

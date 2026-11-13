@@ -142,6 +142,7 @@ interface RunState {
   loaded: boolean;
   loadError: string | null;
   selectedId: string | null;
+  selectedContext: RunConfig | null;
   /** Ids of temporary configurations (created by gutter / context runs, not saved; last in `configs`). */
   temporary: string[];
   /** Ids of configurations pinned to the top of the chooser, in pin order. */
@@ -172,6 +173,7 @@ export const useRun = create<RunState>(() => ({
   loaded: false,
   loadError: null,
   selectedId: null,
+  selectedContext: null,
   temporary: [],
   pinned: [],
   recent: [],
@@ -248,6 +250,7 @@ export async function loadConfigs(): Promise<void> {
       loaded: true,
       loadError: null,
       selectedId,
+      selectedContext: null,
     });
   } catch (e) {
     useRun.setState({ loaded: true, loadError: e instanceof Error ? e.message : String(e) });
@@ -268,7 +271,7 @@ export function defaultSelection(configs: readonly RunConfig[]): RunConfig | und
 }
 
 export function selectConfig(id: string | null) {
-  useRun.setState({ selectedId: id });
+  useRun.setState({ selectedId: id, selectedContext: null });
   const root = useProject.getState().project?.root;
   if (root) writeSelected(root, id);
 }
@@ -340,8 +343,8 @@ export function currentFileSelected(): boolean {
 }
 
 export function selectedConfig(): RunConfig | undefined {
-  const { configs, selectedId } = useRun.getState();
-  return configs.find((c) => c.id === selectedId);
+  const { configs, selectedId, selectedContext } = useRun.getState();
+  return selectedContext?.id === selectedId ? selectedContext : configs.find((c) => c.id === selectedId);
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +414,10 @@ export function adoptTemporary(config: RunConfig): RunConfig {
     state.configs.find((c) => !state.temporary.includes(c.id) && sameApplication(c, config));
   if (existing && !state.temporary.includes(config.id)) {
     selectConfig(existing.id);
+    if (config.id.startsWith("plugin:") && config.params?.contextSource === "bazel") {
+      useRun.setState({ selectedContext: config });
+      return config;
+    }
     return existing;
   }
   let temporary = [...state.temporary.filter((id) => id !== config.id), config.id];
@@ -1514,6 +1521,7 @@ export function resetRuns() {
     loaded: false,
     loadError: null,
     selectedId: null,
+    selectedContext: null,
     temporary: [],
     pinned: [],
     recent: [],

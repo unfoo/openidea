@@ -3,6 +3,7 @@
  * active file — the file's tests for test files, the matching run target or a
  * direct interpreter invocation for main files. Best effort, IDEA-style.
  */
+import { bazelTestBases, bazelTestConfig } from "./bazel";
 import type { RunConfig } from "@/platform/ipc";
 import { djangoLabel, djangoTestsOf, hasDjangoTests } from "./djangoTypes";
 import { phpunitArgs } from "./testing/phpunit";
@@ -201,6 +202,8 @@ function applyPytestTemplate(config: RunConfig): RunConfig {
  * directory: `npm run test` and `npm run test:unit`…); the default one first.
  */
 export function testBasesFor(relPath: string, configs: RunConfig[]): RunConfig[] {
+  const bazel = bazelTestBases(relPath, configs);
+  if (bazel.length) return bazel;
   const kinds = testKinds(relPath);
   // Configurations produced from a test or file are results of narrowing, never bases for it.
   const candidates = configs
@@ -224,6 +227,7 @@ export function testConfigFor(
 ): RunConfig | null {
   base ??= testBasesFor(relPath, configs)[0];
   if (!base) return null;
+  if (bazelTestBases(relPath, [base]).length) return bazelTestConfig(base);
   const file = relToCwd(relPath, base);
   switch (base.kind) {
     case "dotnet-test": {

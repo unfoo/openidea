@@ -1,3 +1,4 @@
+import { bazelTargets, isBazelBuild } from "./bazelTargets";
 /**
  * Run targets inside a file, for the gutter ▶ icons and "Run test" code lenses:
  * `fn main`, `#[test]` functions and `mod tests`, JS/TS `test`/`it`/`describe`,
@@ -6,6 +7,7 @@
  * Line-based regex detection (cheap, no parser), plus the run configuration for
  * one target derived from the project's detected test configurations.
  */
+import { bazelTestConfig, isBazelJUnit } from "./bazel";
 import { goTargets } from "./goTargets";
 import { csharpTargets } from "./csharpTargets";
 import { formatArgs } from "./configs";
@@ -39,14 +41,18 @@ export interface RunTarget {
   /** Ruby: a `module` suite, which runs the tests of every class declared inside it. */
   rubyModule?: boolean;
   pest?: boolean;
+  bazelLabel?: string;
+  endLine?: number;
+  bazelOperation?: "build" | "run" | "test";
 }
 
 /** Above this size we skip detection (generated / minified files). */
 export const MAX_SCAN = 400_000;
 
-type Lang = "rust" | "js" | "python" | "php" | "go" | "jvm" | "ruby" | "csharp" | null;
+type Lang = "bazel" | "rust" | "js" | "python" | "php" | "go" | "jvm" | "ruby" | "csharp" | null;
 
 export function targetLanguage(relPath: string): Lang {
+  if (isBazelBuild(relPath)) return "bazel";
   if (/\.cs$/i.test(relPath)) return "csharp";
   if (/\.rs$/.test(relPath)) return "rust";
   if (/\.[cm]?[jt]sx?$/.test(relPath)) return "js";
@@ -357,6 +363,8 @@ export function detectRunTargets(text: string, relPath: string, django = false):
   if (text.length > MAX_SCAN) return [];
   const lines = text.split("\n");
   switch (targetLanguage(relPath)) {
+    case "bazel":
+      return bazelTargets(text, relPath);
     case "csharp":
       return csharpTargets(text);
     case "rust":
@@ -415,6 +423,14 @@ export function targetConfig(
   }
   const file = testConfigFor(relPath, configs, base, content);
   if (!file) return null;
+  if (isBazelJUnit(file)) {
+    if (target.kind === "test" && !file.args.includes("--method-filter")) return null;
+    return bazelTestConfig(
+      file,
+      target.className,
+      target.kind === "test" ? target.path[target.path.length - 1] : undefined,
+    );
+  }
   if (target.className && (file.kind === "maven" || file.kind === "gradle"))
     return jvmTestConfig(
       file,

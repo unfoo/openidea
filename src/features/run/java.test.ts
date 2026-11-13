@@ -621,3 +621,27 @@ describe("jvmMainCandidates", () => {
     expect(fq?.instance).toBeUndefined();
   });
 });
+
+it("debugs a plugin Bazel JVM through JDWP and preserves a method context", () => {
+  const base = cfg({
+    id: "plugin:unfoo.bazel:test-junit-engine",
+    kind: "plugin",
+    isTest: true,
+    command: "/bin/bash",
+    args: ["/plugin/test_runner.sh", "--method", "example.EngineSpec#works"],
+    debugAdapter: "bash-debug",
+  });
+  const debug = jdwpLaunch(base)!;
+  expect(debug.args.at(-1)).toBe(`--debug-jvm-agent=${JDWP_AGENT}`);
+  expect(debug.env.JAVA_TOOL_OPTIONS).toBeUndefined();
+  expect(jdwpLaunch(debug)!.args.filter((arg) => arg.startsWith("--debug-jvm-agent="))).toHaveLength(1);
+  useRun.setState({ configs: [base], temporary: [] });
+  const context = {
+    ...base,
+    args: [...base.args, "--class", "example.EngineSpec"],
+    params: { contextSource: "bazel" },
+  };
+  expect(adoptTemporary(context).args).toEqual(context.args);
+  expect(useRun.getState().selectedContext).toBe(context);
+  expect(useRun.getState().configs).toEqual([base]);
+});

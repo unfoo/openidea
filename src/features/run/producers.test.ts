@@ -1195,3 +1195,50 @@ it("nested Ruby scripts use their own source paths relative to their cwd", () =>
     spy.mockRestore();
   }
 });
+
+describe("Bazel Java context", () => {
+  const path = "backend/src/test/java/example/EngineSpec.java";
+  const source = "package example;\nclass EngineSpec {\n  @org.junit.jupiter.api.Test\n  void works() {}\n}\n";
+  const base = cfg({
+    id: "plugin:unfoo.bazel:test-junit-engine",
+    kind: "plugin",
+    isTest: true,
+    command: "/bin/bash",
+    cwd: ROOT,
+    args: [
+      "/private/plugin/test_runner.sh",
+      "--root",
+      ROOT,
+      "--target",
+      "//backend:engine_test",
+      "--config",
+      "test-junit-engine",
+      "--source-list",
+      JSON.stringify([path]),
+      "--method-filter",
+    ],
+  });
+  it("runs a Java method through its owning Bazel configuration", () => {
+    const produced = produceContext(
+      { path: `${ROOT}/${path}`, root: ROOT, configs: [base], content: source, line: 3 },
+      OPTIMISTIC,
+    );
+    expect(produced?.config?.id).toBe(base.id);
+    expect(produced?.config?.cwd).toBe(ROOT);
+    expect(produced?.config?.args.slice(-2)).toEqual(["--method", "example.EngineSpec#works"]);
+    expect(produced?.config?.params?.contextSource).toBe("bazel");
+  });
+  it("does not offer an unrelated Bazel target for another source", () => {
+    const produced = produceContext(
+      {
+        path: `${ROOT}/backend/src/test/java/example/OtherSpec.java`,
+        root: ROOT,
+        configs: [base],
+        content: source,
+        line: 3,
+      },
+      OPTIMISTIC,
+    );
+    expect(produced).toBeNull();
+  });
+});
