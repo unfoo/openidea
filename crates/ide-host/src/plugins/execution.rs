@@ -521,6 +521,79 @@ impl PluginHost {
 /// Internal launch metadata; it is ignored after the original operation finishes.
 pub(super) const RUN_OPERATION: &str = "plugin.operation";
 impl PluginHost {
+    /// Native Run and rerun use the same owned lifecycle as plugin-started runs.
+    pub(crate) fn prepare_run_operation(
+        &self,
+        client: &str,
+        config: &mut ide_run::RunConfig,
+    ) -> IdeResult<Option<String>> {
+        let Some((owner, short_id)) = config.id.strip_prefix(ide_run::EXTERNAL_PREFIX).and_then(|s| s.split_once(':'))
+        else {
+            return Ok(None);
+        };
+        let (owner, short_id) = (owner.to_owned(), short_id.to_owned());
+        let root = self.shared.project_of(client).ok_or_else(IdeError::cancelled)?;
+        if !self.shared.workspace().is_some_and(|w| w.trusted(&root)) {
+            return Err(IdeError::invalid("project is not trusted"));
+        }
+        let declared = self
+            .run_detection()
+            .detect(&root)
+            .into_iter()
+            .find(|c| c.id == config.id)
+            .ok_or_else(|| IdeError::not_found("plugin configuration no longer available"))?;
+        self.program_for_project(&owner, &declared.command, Some(&root))?;
+        let existing = config.extras.params.get(RUN_OPERATION).and_then(|id| {
+            let mut operations = self.shared.operations.lock();
+            let op = operations.get_mut(id)?;
+            if op.client != client
+                || op.plugin != owner
+                || op.started
+                || op.root.as_ref() != Some(&root)
+                || !matches!(&op.kind, OperationKind::Run { configuration, .. } if configuration == &config.id)
+            {
+                return None;
+            }
+            op.started = true;
+            Some(id.clone())
+        });
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let api = PluginApi { pkg: self.get(&owner)?.pkg.clone(), shared: self.shared.clone() };
+                let id = api
+                    .new_operation(
+                        client,
+                        OperationKind::Run {
+                            config: short_id.clone(),
+                            configuration: config.id.clone(),
+                            program: declared.command,
+                        },
+                    )
+                    .map_err(|error| IdeError::invalid(error.to_string()))?;
+                let mut operations = self.shared.operations.lock();
+                let operation = operations.get_mut(&id).ok_or_else(IdeError::cancelled)?;
+                operation.started = true;
+                id
+            }
+        };
+        config.extras.params.insert(RUN_OPERATION.into(), id.clone());
+        config.env.insert("OPENIDEA_PLUGIN_OPERATION".into(), id.clone());
+        let started_at_us =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
+        self.post_owned_event(
+            &owner,
+            client,
+            WorkbenchEvent::RunStarted(ide_plugin::RunStarted {
+                id: id.clone(),
+                config: short_id,
+                started_at_us,
+                root: root.to_string_lossy().into_owned(),
+                args: config.args.clone(),
+            }),
+        );
+        Ok(Some(id))
+    }
     pub(crate) fn run_operation_sink(
         self: &Arc<Self>,
         client: &str,

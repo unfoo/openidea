@@ -1025,6 +1025,10 @@ fn event_to_wit(e: WorkbenchEvent) -> wit_events::Event {
             kind: "websocket-ready".into(),
             data: serde_json::to_string(&value).expect("WebSocket ready event serializes"),
         }),
+        WorkbenchEvent::RunStarted(value) => wit_events::Event::Other(wit_types::Extension {
+            kind: "run-started".into(),
+            data: serde_json::to_string(&value).unwrap(),
+        }),
         WorkbenchEvent::RunExited(value) => wit_events::Event::Other(wit_types::Extension {
             kind: "run-exited".into(),
             data: serde_json::to_string(&value).unwrap(),

@@ -1892,7 +1892,8 @@ impl PluginHost {
                 .filter(|e| {
                     !matches!(
                         e,
-                        WorkbenchEvent::RunExited(_)
+                        WorkbenchEvent::RunStarted(_)
+                            | WorkbenchEvent::RunExited(_)
                             | WorkbenchEvent::TerminalExited(_)
                             | WorkbenchEvent::ContentTabAction(_)
                     )
@@ -1971,6 +1972,7 @@ impl PluginHost {
                     && !matches!(
                         event,
                         WorkbenchEvent::FilesChanged(_)
+                            | WorkbenchEvent::RunStarted(_)
                             | WorkbenchEvent::RunExited(_)
                             | WorkbenchEvent::TerminalExited(_)
                             | WorkbenchEvent::ContentTabAction(_)
@@ -2118,7 +2120,13 @@ impl PluginHost {
                 && !kinds.contains(&EventKind::Scheduled)
                 && !kinds.contains(&EventKind::FilesChanged)
                 && !kinds.iter().any(|k| {
-                    matches!(k, EventKind::RunExited | EventKind::TerminalExited | EventKind::ContentTabAction)
+                    matches!(
+                        k,
+                        EventKind::RunStarted
+                            | EventKind::RunExited
+                            | EventKind::TerminalExited
+                            | EventKind::ContentTabAction
+                    )
                 })
             {
                 actor.cancel_soft();

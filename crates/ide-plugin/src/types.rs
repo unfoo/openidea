@@ -109,6 +109,7 @@ pub enum EventKind {
     FileClosed,
     SettingsChanged,
     InputModeChanged,
+    RunStarted,
     RunExited,
     TerminalExited,
     ContentTabAction,
@@ -123,12 +124,13 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::DocumentChanged,
         Self::WebsocketReady,
         Self::FileClosed,
         Self::SettingsChanged,
         Self::InputModeChanged,
+        Self::RunStarted,
         Self::RunExited,
         Self::TerminalExited,
         Self::ContentTabAction,
@@ -149,6 +151,7 @@ impl EventKind {
             Self::FileClosed => "file-closed",
             Self::SettingsChanged => "settings-changed",
             Self::InputModeChanged => "input-mode-changed",
+            Self::RunStarted => "run-started",
             Self::RunExited => "run-exited",
             Self::TerminalExited => "terminal-exited",
             Self::ContentTabAction => "content-tab-action",
@@ -173,6 +176,7 @@ impl EventKind {
         match self {
             Self::ActionPerformed | Self::InputModeChanged => Some(ide_extension::Capability::InputEvents),
             Self::Scheduled
+            | Self::RunStarted
             | Self::RunExited
             | Self::TerminalExited
             | Self::ContentTabAction
@@ -280,6 +284,7 @@ pub struct WebSocketBatch {
 pub enum WorkbenchEvent {
     DocumentChanged(DocumentChanged),
     WebsocketReady(WebsocketReady),
+    RunStarted(crate::RunStarted),
     RunExited(crate::RunExited),
     TerminalExited(crate::TerminalExited),
     ContentTabAction(crate::ContentTabAction),
@@ -302,6 +307,7 @@ impl WorkbenchEvent {
         match self {
             Self::DocumentChanged(_) => EventKind::DocumentChanged,
             Self::WebsocketReady(_) => EventKind::WebsocketReady,
+            Self::RunStarted(_) => EventKind::RunStarted,
             Self::RunExited(_) => EventKind::RunExited,
             Self::TerminalExited(_) => EventKind::TerminalExited,
             Self::ContentTabAction(_) => EventKind::ContentTabAction,

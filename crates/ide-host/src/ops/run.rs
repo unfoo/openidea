@@ -232,9 +232,12 @@ pub async fn start_request(
     on_output: Emit<OutputChunk>,
     request: Option<ide_core::RequestId>,
 ) -> IdeResult<RunInfo> {
-    let cancel = request.map(|id| host.begin_request(id)).unwrap_or_default();
-    let operation = config.extras.params.get("plugin.operation").cloned();
     let mut config = config;
+    let operation = match host.plugin_host() {
+        Some(plugins) => plugins.prepare_run_operation(window, &mut config)?,
+        None => None,
+    };
+    let cancel = request.map(|id| host.begin_request(id)).unwrap_or_default();
     let agent = match host.project(window) {
         Ok(project) => host.mcp_agent_runs.launch(&project.root, window, &mut config),
         Err(_) => None,
@@ -250,8 +253,13 @@ pub async fn start_request(
     if let Some(id) = request {
         host.end_request(id);
     }
-    if let (Ok(info), Some(operation), Some(plugins)) = (&result, operation, host.plugin_host()) {
-        plugins.run_operation_started(window, &operation, info.id);
+    if let (Some(operation), Some(plugins)) = (operation, host.plugin_host()) {
+        match &result {
+            Ok(info) => plugins.run_operation_started(window, &operation, info.id),
+            Err(_) => {
+                plugins.finish_operation(window, &operation, None, cancel.is_cancelled());
+            }
+        }
     }
     result
 }
