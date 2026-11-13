@@ -792,12 +792,53 @@ async fn api14_stage3_remote_terminal_pins_and_exit_events_stay_on_the_execution
     .await
     .unwrap();
     let received: Value = serde_json::from_str(received.as_str().unwrap()).unwrap();
-    assert_eq!(received.as_array().unwrap().len(), 2);
-    assert_eq!(received[1]["kind"], "run-exited");
-    let data: Value = serde_json::from_str(received[1]["data"].as_str().unwrap()).unwrap();
+    assert_eq!(received.as_array().unwrap().len(), 3);
+    assert_eq!(received[1]["kind"], "run-started");
+    let started: Value = serde_json::from_str(received[1]["data"].as_str().unwrap()).unwrap();
+    assert_eq!(started["id"], operation);
+    assert_eq!(started["root"], project.to_string_lossy().as_ref());
+    assert_eq!(started["args"], json!(["test", "appended"]));
+    assert!(started["startedAtUs"].as_u64().unwrap() > 0);
+    assert_eq!(received[2]["kind"], "run-exited");
+    let data: Value = serde_json::from_str(received[2]["data"].as_str().unwrap()).unwrap();
     assert_eq!(data["id"], operation);
     assert_eq!(data["status"], 0);
     assert_eq!(data["killed"], false);
+
+    // A native Run/rerun with stale operation metadata receives a fresh identity,
+    // while still using the provider's pinned program and the actual edited argv.
+    let mut previous = operation;
+    for channel in [41, 42] {
+        client.events.lock().clear();
+        let mut rerun = config.clone();
+        rerun.args.push("edited target".into());
+        rerun.env.insert("OPENIDEA_PLUGIN_OPERATION".into(), "spoofed".into());
+        let info =
+            invoke(&peer, "run_start", json!({"config": rerun, "onOutput": {"$channel": channel}})).await.unwrap();
+        invoke(&peer, "run_stdin", json!({"id": info["id"], "data": "finished\n"})).await.unwrap();
+        until("native rerun exit", 5, || {
+            client.events.lock().iter().any(|m| matches!(&m.event, IdeEvent::RunExited { .. }))
+        })
+        .await;
+        plugins.host().flush_events_at(std::time::Instant::now() + Duration::from_secs(3));
+        plugins.host().wait_events(Duration::from_secs(5));
+        let received = invoke(
+            &peer,
+            "plugin_run_command",
+            json!({"pluginId":"execution", "commandId":"events", "arg":null, "editor":null}),
+        )
+        .await
+        .unwrap();
+        let received: Value = serde_json::from_str(received.as_str().unwrap()).unwrap();
+        let events = received.as_array().unwrap();
+        assert_eq!(events[events.len() - 2]["kind"], "run-started");
+        let started: Value = serde_json::from_str(events[events.len() - 2]["data"].as_str().unwrap()).unwrap();
+        let exited: Value = serde_json::from_str(events.last().unwrap()["data"].as_str().unwrap()).unwrap();
+        assert_ne!(started["id"], previous);
+        assert_eq!(started["id"], exited["id"]);
+        assert_eq!(started["args"], json!(["test", "appended", "edited target"]));
+        previous = started["id"].as_str().unwrap().to_owned();
+    }
     plugins.host().shutdown();
 }
 

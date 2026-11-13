@@ -63,6 +63,17 @@ pub struct PluginRunConfiguration {
     pub framework: Option<String>,
 }
 
+/// An owned native Run invocation, announced before its process starts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RunStarted {
+    pub id: String,
+    pub config: String,
+    pub started_at_us: u64,
+    pub root: String,
+    pub args: Vec<String>,
+}
+
 /// RunExited data exchanged with the IDE.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
