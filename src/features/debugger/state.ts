@@ -883,6 +883,20 @@ async function loadFrames(id: DebugSessionId, threadId: number, reveal: boolean)
     frames = await call(commands.debugStackTrace(id, threadId));
   } catch (e) {
     console.warn("stackTrace failed", e);
+    const current = useDebug.getState().sessions[id];
+    if (
+      !current ||
+      current.status !== "paused" ||
+      current.selectedThread !== threadId ||
+      current.frames !== before?.frames
+    )
+      return;
+    // JDT may time out resolving library sources on the first stack request after attach.
+    try {
+      frames = await call(commands.debugStackTrace(id, threadId));
+    } catch (retryError) {
+      console.warn("stackTrace retry failed", retryError);
+    }
   }
   const s = useDebug.getState().sessions[id];
   if (!s || s.status !== "paused" || s.selectedThread !== threadId || s.frames !== before?.frames) return;

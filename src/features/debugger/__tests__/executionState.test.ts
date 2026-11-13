@@ -58,6 +58,30 @@ beforeEach(() => {
 });
 
 describe("execution point state", () => {
+  it("recovers the paused frame after an initial JDT source lookup timeout", async () => {
+    ipc.debugStackTrace.mockRejectedValueOnce(new Error("request timed out"));
+    stopped();
+    await settle();
+    expect(ipc.debugStackTrace).toHaveBeenCalledTimes(2);
+    expect(useDebug.getState().sessions[1]).toMatchObject({ selectedThread: 5, selectedFrame: 100 });
+    expect(useExecutionPoint.getState()).toMatchObject({ path, line: 6840 });
+  });
+
+  it("does not retry a failed stack request after the test resumed", async () => {
+    const old = deferred<ReturnType<typeof ipc.ok<StackFrame[]>>>();
+    ipc.debugStackTrace.mockReturnValueOnce(
+      old.promise.then(() => {
+        throw new Error("request timed out");
+      }),
+    );
+    stopped();
+    handleDebugEvent(1, { kind: "continued", threadId: 5, allThreadsContinued: true });
+    old.resolve(ipc.ok([]));
+    await settle();
+    expect(ipc.debugStackTrace).toHaveBeenCalledTimes(1);
+    expect(useExecutionPoint.getState().path).toBeNull();
+  });
+
   it.each([false, true])("selects each stopped thread and its fresh top frame (all=%s)", async (all) => {
     stopped(5, all);
     await settle();
