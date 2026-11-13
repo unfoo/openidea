@@ -1407,6 +1407,41 @@ fn wall_clock_timeout_traps() {
 }
 
 #[test]
+fn repeated_deadlines_keep_contributions_and_recover_without_disabling() {
+    let f = fixture(Limits {
+        fuel: u64::MAX,
+        timeout: Duration::from_millis(100),
+        restart_backoff: Duration::from_millis(1),
+        max_failures: 1,
+        ..Limits::default()
+    });
+    f.install(&misbehave_pkg());
+    for _ in 0..4 {
+        let error = loop {
+            match f.run("misbehave", "spin", None) {
+                Err(error) if error.contains("restarts in") => std::thread::sleep(Duration::from_millis(10)),
+                result => break result.unwrap_err(),
+            }
+        };
+        assert!(error.contains("timed out after 100ms"), "{error}");
+        let info = f.host.info_of("misbehave").unwrap();
+        assert_eq!(info.status, PluginStatus::Inactive);
+        assert!(!info.contributions.is_empty());
+    }
+    std::thread::sleep(Duration::from_millis(25));
+    assert_eq!(f.run("misbehave", "echo", Some("recovered")).unwrap().as_deref(), Some("recovered"));
+    assert!(f.host.info_of("misbehave").unwrap().error.is_none());
+    assert!(
+        !f.take_events()
+            .iter()
+            .any(|(_, event)| matches!(event,PluginEvent::Notification{title,..} if title.contains("was disabled")))
+    );
+    // Timeout recovery does not forgive a genuine trap under max_failures=1.
+    assert!(f.run("misbehave", "panic", None).unwrap_err().contains("boom"));
+    assert_eq!(f.status("misbehave"), PluginStatus::Failed);
+}
+
+#[test]
 fn memory_limit_traps() {
     let f = fixture(Limits { memory_bytes: 32 << 20, ..Limits::default() });
     f.install(&misbehave_pkg());

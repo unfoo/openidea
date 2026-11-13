@@ -62,6 +62,8 @@ pub(crate) const MAX_TITLE: usize = 256;
 const STDERR_CAPACITY: usize = 256 << 10;
 /// Message of a call interrupted through [`Runtime::cancel_handle`].
 pub const CANCELLED: &str = "was cancelled";
+/// Deadline exhaustion is recoverable after discarding the interrupted instance.
+pub const TIMED_OUT: &str = "timed out after ";
 
 /// What plugin code may ask of the IDE, per plugin. Implemented by the host,
 /// which routes notifications and status items to windows and edits to open
@@ -1121,7 +1123,7 @@ impl Runtime {
             if data.cancel.is_set() {
                 Err(wasmtime::Error::msg(CANCELLED))
             } else if Instant::now() >= data.deadline {
-                Err(wasmtime::Error::msg(format!("timed out after {:?}", data.timeout)))
+                Err(wasmtime::Error::msg(format!("{TIMED_OUT}{:?}", data.timeout)))
             } else {
                 Ok(UpdateDeadline::Continue(1))
             }
