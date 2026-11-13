@@ -84,7 +84,7 @@ use ide_language::plugin_point::PluginLanguages;
 use ide_language::{LanguageConfig, ProgramPin};
 use ide_plugin::{
     Actor, ActorError, CANCELLED, CallError, HostApi, HostError, Invocation, Limits, PluginEngine, Runtime,
-    RuntimeSetup,
+    RuntimeSetup, TIMED_OUT,
 };
 use parking_lot::{Condvar, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
@@ -143,6 +143,7 @@ struct Meta {
     latencies: VecDeque<f32>,
     /// Consecutive crashes; reset by a call that returns.
     failures: u32,
+    timeouts: u32,
     /// No restart before this (backoff after a crash).
     retry_at: Option<Instant>,
     /// The component exports `syntax-provider` (known once activated).
@@ -168,6 +169,7 @@ impl Meta {
             stats: PluginStats::default(),
             latencies: VecDeque::new(),
             failures: 0,
+            timeouts: 0,
             retry_at: None,
             has_syntax: false,
             has_run_target_validation: false,
@@ -277,8 +279,9 @@ impl LoadedPlugin {
     fn record_call(&self, elapsed: Duration, ok: bool, healthy: bool) {
         let mut meta = self.meta.lock();
         meta.record_call(elapsed, ok);
-        if healthy && meta.failures > 0 {
+        if healthy && (meta.failures > 0 || meta.timeouts > 0) {
             meta.failures = 0;
+            meta.timeouts = 0;
             meta.retry_at = None;
             meta.error = None;
         }
@@ -2769,14 +2772,26 @@ impl PluginHost {
     /// A trap dropped the plugin's instance: restart it on next use after a
     /// backoff, or stop it for the session after too many crashes in a row.
     fn crashed(&self, plugin: &LoadedPlugin, error: &str, client: Option<&str>) {
-        self.clear_provider_diagnostics(plugin.id());
+        let timed_out = error.starts_with(TIMED_OUT);
+        if !timed_out {
+            self.clear_provider_diagnostics(plugin.id());
+        }
         let failures = {
             let mut meta = plugin.meta.lock();
-            meta.failures += 1;
             meta.stats.crashes += 1;
-            meta.failures
+            if timed_out {
+                meta.failures = 0;
+                meta.timeouts = meta.timeouts.saturating_add(1);
+                meta.timeouts
+            } else {
+                meta.timeouts = 0;
+                meta.failures = meta.failures.saturating_add(1);
+                meta.failures
+            }
         };
-        if failures >= self.limits.max_failures.max(1) {
+        // Deadline exhaustion invalidates the instance, not its registrations.
+        // Keep a capped backoff; genuine traps still stop after max_failures.
+        if !timed_out && failures >= self.limits.max_failures.max(1) {
             let error =
                 if failures > 1 { format!("{error} (crashed {failures} times in a row)") } else { error.to_owned() };
             return self.fail(plugin, &error, client);
@@ -2797,7 +2812,11 @@ impl PluginHost {
                 PluginEvent::Notification {
                     plugin_id: plugin.id().to_owned(),
                     level: NotificationLevel::Warning,
-                    title: format!("Plugin \u{201c}{}\u{201d} crashed", plugin.manifest().name),
+                    title: format!(
+                        "Plugin \u{201c}{}\u{201d} {}",
+                        plugin.manifest().name,
+                        if timed_out { "timed out" } else { "crashed" }
+                    ),
                     body: format!("{error}\nIt restarts the next time it is needed."),
                     actions: Vec::new(),
                 },
