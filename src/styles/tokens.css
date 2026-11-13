@@ -1425,9 +1425,9 @@ html {
   --syn-markup-code: #2aa198;
   --syn-tag: #268bd2;
   --syn-escape: #dc322f;
-  /* Selection and hover differ from the panel and popup surfaces; the editor keeps Solarized's own selection. */
-  --bg-editor-selection: #073642;
-  --bg-editor-selection-inactive: #073642;
+  /* Distinguish active and inactive selections from Solarized's editor and caret row. */
+  --bg-editor-selection: color-mix(in srgb, var(--palette-blue) 38%, var(--palette-bg));
+  --bg-editor-selection-inactive: color-mix(in srgb, var(--palette-blue) 25%, var(--palette-bg));
 }
 
 /*
