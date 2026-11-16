@@ -9,7 +9,7 @@
 import type { ActiveTheme, PluginEvent, PluginUpdate } from "@/bindings";
 import { useEditorRegistry } from "@/editor/api";
 import { refreshLanguageInfos } from "@/editor/core/cm/languages";
-import { endpointsChanged, notifications } from "@/workbench/contributions";
+import { endpointsChanged, notifications, runConfigurationsChanged } from "@/workbench/contributions";
 import { useI18n } from "@/platform/i18n";
 import { useProducerNames } from "@/platform/inspections";
 import { languageListChanged } from "@/platform/languageList";
@@ -292,6 +292,9 @@ function announceUpdates(updates: readonly PluginUpdate[]) {
 
 export function handlePluginEvent(e: PluginEvent) {
   switch (e.type) {
+    case "runConfigurationsChanged":
+      runConfigurationsChanged();
+      break;
     case "commandsChanged":
       scheduleRefresh();
       break;

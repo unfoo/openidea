@@ -13,6 +13,7 @@ import { InputDialogsHost } from "@/workbench/inputDialogs";
 import { MessagesHost } from "@/workbench/messages";
 import {
   onEndpointsChanged,
+  onRunConfigurationsChanged,
   provideNotificationService,
   searchEndpoints,
   type NotificationService,
@@ -1866,4 +1867,16 @@ it("asks the plugin for its routes once per plugin and again when they change", 
 
   syncUiContributions([], plugins);
   expect(await searchEndpoints("/p")).toEqual([]);
+});
+
+it("invalidates the Run catalogue for provider changes and removes disposed listeners", () => {
+  const refresh = vi.fn();
+  const off = onRunConfigurationsChanged(refresh);
+  handlePluginEvent({ type: "commandsChanged" });
+  expect(refresh).not.toHaveBeenCalled();
+  handlePluginEvent({ type: "runConfigurationsChanged" });
+  expect(refresh).toHaveBeenCalledTimes(1);
+  off();
+  handlePluginEvent({ type: "runConfigurationsChanged" });
+  expect(refresh).toHaveBeenCalledTimes(1);
 });

@@ -1404,6 +1404,20 @@ export interface RunConfigTypeContribution {
   debugAdapter?: string;
 }
 
+const runConfigurationListeners = new Set<() => void>();
+
+/** Configuration providers changed; the Run feature refreshes its catalogue. */
+export function runConfigurationsChanged() {
+  notifyEach(runConfigurationListeners, (listener) => listener(), "run configurations changed");
+}
+
+export function onRunConfigurationsChanged(listener: () => void): () => void {
+  runConfigurationListeners.add(listener);
+  return () => {
+    runConfigurationListeners.delete(listener);
+  };
+}
+
 export const useRunConfigTypes = create<{ types: Map<string, RunConfigTypeContribution> }>(() => ({
   types: new Map(),
 }));

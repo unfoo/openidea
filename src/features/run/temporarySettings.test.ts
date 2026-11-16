@@ -78,3 +78,53 @@ it("keeps temporary configurations without settings-derived values and applies t
   expect(loaded.args).toEqual(["-s", "/moved/maven/conf/settings.xml", "test"]);
   expect(loaded.env).toEqual({ JAVA_HOME: "/new/jdk" });
 });
+
+it("keeps the newest catalogue when a pre-reload request finishes late", async () => {
+  let finish!: (value: { status: "ok"; data: RunConfig[] }) => void;
+  ipc.runConfigs.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const older = loadConfigs();
+  const current = { ...goal, id: "plugin:example:current" };
+  ipc.runConfigs.mockImplementationOnce(() => ok([current]));
+  await loadConfigs();
+  finish({ status: "ok", data: [goal] });
+  await older;
+  expect(useRun.getState().configs).toEqual([current]);
+});
+
+it("ignores a pre-reload error after the recovered catalogue arrives", async () => {
+  let fail!: (error: Error) => void;
+  ipc.runConfigs.mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+  );
+  const older = loadConfigs();
+  ipc.runConfigs.mockImplementationOnce(() => ok([goal]));
+  await loadConfigs();
+  fail(new Error("old plugin instance stopped"));
+  await older;
+  expect(useRun.getState().loadError).toBeNull();
+  expect(useRun.getState().configs).toEqual([goal]);
+});
+
+it("discards a request after closing and reopening the same project", async () => {
+  let finish!: (value: { status: "ok"; data: RunConfig[] }) => void;
+  ipc.runConfigs.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const older = loadConfigs();
+  resetRuns();
+  finish({ status: "ok", data: [goal] });
+  await older;
+  expect(useRun.getState().configs).toEqual([]);
+  expect(useRun.getState().loaded).toBe(false);
+});

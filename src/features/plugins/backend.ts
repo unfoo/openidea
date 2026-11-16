@@ -400,7 +400,12 @@ function ensureSubscribed() {
   commands
     .pluginSubscribe(channel)
     // Anything that changed before the channel existed is picked up by a refresh.
-    .then(() => tauriListeners.forEach((l) => l({ type: "commandsChanged" })))
+    .then(() => {
+      for (const listener of tauriListeners) {
+        listener({ type: "commandsChanged" });
+        listener({ type: "runConfigurationsChanged" });
+      }
+    })
     .catch(() => (subscribed = false));
 }
 

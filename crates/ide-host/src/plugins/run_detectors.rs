@@ -55,6 +55,10 @@ pub struct RunDetectors {
 }
 
 impl RunDetectors {
+    pub(super) fn contains_plugin(&self, id: &str) -> bool {
+        self.items.read().iter().any(|(_, plugin, _)| plugin == id)
+    }
+
     fn add(self: &Arc<Self>, plugin: String, detector: Detector) -> Disposable {
         let seq = self.seq.fetch_add(1, Ordering::Relaxed);
         self.items.write().push((seq, plugin, detector));

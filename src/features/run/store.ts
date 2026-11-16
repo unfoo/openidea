@@ -218,7 +218,10 @@ function writeSelected(root: string, id: string | null) {
   }
 }
 
+let catalogueRevision = 0;
+
 export async function loadConfigs(): Promise<void> {
+  const revision = ++catalogueRevision;
   if (useProject.getState().project?.trusted === false) return;
   const root = useProject.getState().project?.root;
   if (!root) {
@@ -231,12 +234,12 @@ export async function loadConfigs(): Promise<void> {
   }
   try {
     const [saved] = await Promise.all([call(commands.runConfigs()), loadRunTemplates()]);
-    if (useProject.getState().project?.root !== root) return;
+    if (revision !== catalogueRevision || useProject.getState().project?.root !== root) return;
     // Temporary configs survive reloads (and restarts) until saved or evicted; a saved one wins.
     // They are kept without what settings derived: today's toolchains apply to them, as to the others.
     const kept = readTemporary(root).filter((t) => !saved.some((c) => c.id === t.id));
     const temps = kept.length ? await call(commands.runApplySettings(kept)).catch(() => kept) : kept;
-    if (useProject.getState().project?.root !== root) return;
+    if (revision !== catalogueRevision || useProject.getState().project?.root !== root) return;
     const configs = [...saved, ...temps];
     const stored = useRun.getState().selectedId ?? readSelected(root);
     const selectedId =
@@ -254,6 +257,7 @@ export async function loadConfigs(): Promise<void> {
       selectedContext: null,
     });
   } catch (e) {
+    if (revision !== catalogueRevision || useProject.getState().project?.root !== root) return;
     useRun.setState({ loaded: true, loadError: e instanceof Error ? e.message : String(e) });
   }
 }
@@ -1519,6 +1523,7 @@ export function runningSessions(): RunSession[] {
 
 /** Stops everything and forgets sessions (project closed). */
 export function resetRuns() {
+  catalogueRevision++;
   for (const s of runningSessions()) void stopSession(s.id);
   for (const rt of runtimes.values()) cancelFlush(rt);
   runtimes.clear();

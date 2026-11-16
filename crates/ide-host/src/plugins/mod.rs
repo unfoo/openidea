@@ -2558,6 +2558,19 @@ impl PluginHost {
         (id, enabled.then_some(plugin))
     }
 
+    fn has_run_contributions(&self, id: &str) -> bool {
+        self.run_detectors.contains_plugin(id)
+            || self.ui.items("runConfigurations", None).iter().any(|item| item.plugin_id == id)
+    }
+
+    fn dispose_contributions(&self, id: &str) {
+        let had_run = self.has_run_contributions(id);
+        self.registry.dispose_plugin(id);
+        if had_run {
+            self.emit(None, PluginEvent::RunConfigurationsChanged);
+        }
+    }
+
     fn unload(&self, id: &str) {
         let Some(plugin) = self.plugins.write().remove(id) else { return };
         self.stop(&plugin);
@@ -2585,7 +2598,7 @@ impl PluginHost {
         if let Some(reason) = self.blocked_reason(plugin) {
             return self.set_blocked(plugin, &reason);
         }
-        self.registry.dispose_plugin(plugin.id());
+        self.dispose_contributions(plugin.id());
         self.clear_provider_diagnostics(plugin.id());
         if plugin.source == PluginSource::Installed
             && let Some(reason) = self.revoked_reason(plugin.id(), &plugin.manifest().version, plugin.dir())
@@ -2632,6 +2645,9 @@ impl PluginHost {
             meta.granted = granted;
             meta.pending = pending;
             meta.status = if plugin.manifest().wasm.is_some() { PluginStatus::Inactive } else { PluginStatus::Static };
+        }
+        if self.has_run_contributions(plugin.id()) {
+            self.emit(None, PluginEvent::RunConfigurationsChanged);
         }
         let eager = plugin.manifest().activation.contains(&ActivationEvent::StartupFinished)
             && self.startup_finished.load(Ordering::Acquire);
@@ -2855,7 +2871,7 @@ impl PluginHost {
         if let Some(actor) = plugin.runtime.lock().take() {
             actor.stop(true);
         }
-        self.registry.dispose_plugin(plugin.id());
+        self.dispose_contributions(plugin.id());
         self.clear_provider_diagnostics(plugin.id());
         self.shared.clear_plugin(plugin.id(), true);
         self.queues.lock().retain(|(id, _), _| id != plugin.id());
@@ -2865,7 +2881,7 @@ impl PluginHost {
         self.clear_plugin_navigation(plugin.id());
         self.clear_plugin_endpoints(plugin.id());
         tracing::warn!(plugin = %plugin.id(), "{error}");
-        self.registry.dispose_plugin(plugin.id());
+        self.dispose_contributions(plugin.id());
         self.clear_provider_diagnostics(plugin.id());
         let mut meta = plugin.meta.lock();
         meta.status = PluginStatus::Failed;

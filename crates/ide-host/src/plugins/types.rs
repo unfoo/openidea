@@ -210,6 +210,8 @@ pub struct PluginUpdate {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PluginEvent {
+    /// Run configuration providers were registered or withdrawn.
+    RunConfigurationsChanged,
     /// Project target registrations or remembered prompt answers changed.
     RunTargetsChanged,
     /// A window-owned operation; an empty request id queues an asynchronous run.

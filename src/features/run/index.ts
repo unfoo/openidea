@@ -12,6 +12,7 @@ import { agentRunSettings, onWorkflowSettingsChange } from "@/platform/workflowS
 import { showContextMenu, lazyComponent, lazyWhen, type MenuItem } from "@/ui";
 import {
   menuGroupItems,
+  onRunConfigurationsChanged,
   useDebugRunSessions,
   notifications,
   provideRunOutput,
@@ -741,6 +742,7 @@ export function activate(): () => void {
     ]),
     onIdeEvent("runExited", (e) => onRunExited(e.run, e.code)),
     onIdeEvent("projectRootsChanged", scheduleReload),
+    onRunConfigurationsChanged(scheduleReload),
     // Lets other title items follow the selected configuration (e.g. Build shows only for compiled ones).
     useRun.subscribe((s) => {
       const selected = s.configs.find((c) => c.id === s.selectedId);

@@ -6358,6 +6358,26 @@ fn api14_stage3_runs_and_terminals_deliver_exactly_one_exit_after_idle_reclamati
 
 #[cfg(unix)]
 #[test]
+fn run_catalogue_invalidation_follows_providers_not_instance_calls() {
+    let f = execution_fixture();
+    assert!(f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::RunConfigurationsChanged)));
+    f.host.refresh_run_configurations(&f.project);
+    f.host.refresh_run_configurations(&f.project);
+    assert!(!f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::RunConfigurationsChanged)));
+    f.host.reload("execution").unwrap();
+    assert!(f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::RunConfigurationsChanged)));
+    f.host.refresh_run_configurations(&f.project);
+    assert!(f.host.run_detection().detect(&f.project).iter().any(|c| c.id == "plugin:execution:dynamic"));
+    f.take_events();
+    f.host.set_enabled("execution", false).unwrap();
+    assert!(f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::RunConfigurationsChanged)));
+    assert!(!f.host.run_detection().detect(&f.project).iter().any(|c| c.id == "plugin:execution:dynamic"));
+    f.host.set_enabled("execution", true).unwrap();
+    assert!(f.take_events().iter().any(|(_, e)| matches!(e, PluginEvent::RunConfigurationsChanged)));
+}
+
+#[cfg(unix)]
+#[test]
 fn api14_stage3_configurations_test_results_and_content_actions_use_real_exports() {
     let f = execution_fixture();
     f.host.refresh_run_configurations(&f.project);

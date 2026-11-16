@@ -186,6 +186,7 @@ pub fn forwarded(event: &PluginEvent) -> bool {
     matches!(
         event,
         PluginEvent::RunTargetsChanged
+            | PluginEvent::RunConfigurationsChanged
             | PluginEvent::WindowRequest { .. }
             | PluginEvent::ContentTabReply { .. }
             | PluginEvent::OpenDiff { .. }
