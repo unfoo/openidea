@@ -287,3 +287,38 @@ async fn jdk() {
     let found = ops::sdk::sdk_detect(&p.host, WINDOW, ide_sdk::SdkKind::Jdk).await.unwrap();
     assert!(found.iter().any(|s| s.version.as_deref().is_some_and(|v| v.starts_with("21"))), "{found:?}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn externally_written_server_settings_reload_inside_an_ignored_directory() {
+    let p = open("ts-app").await;
+    let project = p.host.project(WINDOW).unwrap();
+    let file = project.settings.file(ide_workspace::SettingsScope::Project).unwrap();
+    std::fs::write(p.root.join(".gitignore"), ".openidea/\n").unwrap();
+    for selected in [vec!["file:///a/.project", "file:///b/.project"], vec!["file:///a/.project"]] {
+        let text = format!(
+            "[languageServers.jdtls.initializationOptions]\nprojectConfigurations = {}\n",
+            serde_json::to_string(&selected).unwrap()
+        );
+        let temporary = file.with_extension("tmp");
+        std::fs::write(&temporary, text).unwrap();
+        std::fs::rename(&temporary, file).unwrap();
+        until("external JDT settings", Duration::from_secs(5), || {
+            let options = project
+                .settings
+                .effective()
+                .language_servers
+                .get("jdtls")
+                .and_then(|s| s.initialization_options.clone());
+            if options.as_ref().and_then(|v| v.get("projectConfigurations")) == Some(&serde_json::json!(selected)) {
+                Ok(())
+            } else {
+                Err(options)
+            }
+        })
+        .await;
+    }
+    assert!(
+        project.lsp.servers().iter().all(|server| server.pid.is_none()),
+        "a settings update does not start idle servers"
+    );
+}

@@ -3625,6 +3625,19 @@ impl LspManager {
             if next == current {
                 continue;
             }
+            if let Some(run) = s.running()
+                && let Some(arguments) = jdtls::projects::changes(&current, &next)
+            {
+                match jdtls::projects::apply(&run, arguments).await {
+                    Ok(()) => {
+                        s.set_effective_config(run.generation, next);
+                        let params = json!({"settings": handler::all_settings(&s.effective_config())});
+                        let _ = run.peer.notify("workspace/didChangeConfiguration", params);
+                    }
+                    Err(error) => tracing::warn!("jdtls: live project update failed: {error}"),
+                }
+                continue;
+            }
             let without_settings = |c: &LanguageServerConfig| LanguageServerConfig { settings: None, ..c.clone() };
             if let Some(run) = s.running()
                 && without_settings(&next) == without_settings(&current)

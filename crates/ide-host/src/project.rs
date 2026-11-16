@@ -69,6 +69,7 @@ pub struct Project {
     /// watchers for (a virtualenv elsewhere, a path dependency).
     lsp_watchers: Mutex<Vec<(PathBuf, Watcher)>>,
     pub(crate) _scratch_watcher: Option<Watcher>,
+    _lsp_settings_watch: Option<Watcher>,
     /// Picks up data sources edited on disk outside the Database tool window.
     _db_sources_watch: Option<ide_db::SourcesWatch>,
     /// A LightEdit window's loose files ([`Host::open_light`]): global settings only,
@@ -552,6 +553,8 @@ impl Host {
         let plugin_diagnostics =
             crate::plugins::diagnostics::Diagnostics::new(sink.clone(), self.runtime.clone(), &documents, &root);
         documents.add_observer(plugin_diagnostics.clone());
+        let lsp_settings_watch =
+            watch_lsp_settings(settings.clone(), lsp.clone(), sink.clone(), root.clone(), self.runtime.clone());
         let project = Arc::new(Project {
             plugin_diagnostics,
             trusted,
@@ -584,6 +587,7 @@ impl Host {
             content_watchers: Mutex::new(content_watchers),
             lsp_watchers: Mutex::new(Vec::new()),
             _scratch_watcher: scratch_watcher,
+            _lsp_settings_watch: lsp_settings_watch,
             _db_sources_watch: db_sources_watch,
             files_events_active,
             light: false,
@@ -759,6 +763,7 @@ impl Host {
             content_watchers: Mutex::new(Vec::new()),
             lsp_watchers: Mutex::new(Vec::new()),
             _scratch_watcher: None,
+            _lsp_settings_watch: None,
             _db_sources_watch: None,
             files_events_active: Arc::new(AtomicBool::new(false)),
             light: true,
@@ -2105,5 +2110,41 @@ mod content_roots_tests {
             vec![dep.to_string_lossy().into_owned(), root.to_string_lossy().into_owned()];
         let roots = content_roots(&settings, &root, &tmp.path().join("build"));
         assert_eq!(roots, vec![shared, dep]);
+    }
+}
+
+/// The settings directory is normally ignored by the project watcher.
+fn watch_lsp_settings(
+    settings: Arc<SettingsStore>,
+    lsp: Arc<LspManager>,
+    sink: SharedSink,
+    root: PathBuf,
+    runtime: tokio::runtime::Handle,
+) -> Option<Watcher> {
+    let file = settings.file(ide_workspace::SettingsScope::Project)?.to_path_buf();
+    let parent = file.parent()?.to_path_buf();
+    std::fs::create_dir_all(&parent).ok()?;
+    let watch = Watcher::start_file(
+        &file,
+        Box::new(move |batch| {
+            if batch.created.is_empty() && batch.modified.is_empty() && batch.removed.is_empty() {
+                return;
+            }
+            settings.reload();
+            sink.emit(IdeEvent::SettingsChanged { key: "languageServers".into() });
+            let (lsp, root) = (lsp.clone(), root.clone());
+            runtime.spawn(async move {
+                if let Err(error) = lsp.refresh_java_project_configs(&root).await {
+                    tracing::warn!("refresh Java project configurations: {error}");
+                }
+            });
+        }),
+    );
+    match watch {
+        Ok(watch) => Some(watch),
+        Err(error) => {
+            tracing::warn!("language server settings watcher: {error}");
+            None
+        }
     }
 }

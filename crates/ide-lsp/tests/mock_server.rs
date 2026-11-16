@@ -7060,3 +7060,73 @@ async fn notebook_edits_change_cell_text_and_reorders_reopen_it() {
         .await;
     h.mgr.shutdown_all().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn java_project_descriptors_update_live_and_retry_without_restarting() {
+    let h = harness_configured("java", "java", &[("jdtls", incremental_caps())], |_| {});
+    let a = uri_of(&h.root.join("a/.project"));
+    let b = uri_of(&h.root.join("b/.project"));
+    let selected = Arc::new(Mutex::new(vec![a.clone()]));
+    h.mgr.set_config_hook(Box::new({
+        let selected = selected.clone();
+        move |cfg, _| {
+            cfg.initialization_options
+                .as_mut()
+                .unwrap()
+                .as_table_mut()
+                .unwrap()
+                .insert("projectConfigurations".into(), toml::Value::try_from(selected.lock().clone()).unwrap());
+        }
+    }));
+    h.open("Main.java", "class Main {}");
+    h.wait_status("jdtls", ServerStatus::Ready).await;
+    let state = h.launcher.state("jdtls");
+    let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    *state.responder.lock() = Some(Arc::new({
+        let selected = selected.clone();
+        let polls = polls.clone();
+        move |_, method, params| {
+            if method != "workspace/executeCommand" || params["command"] != "java.project.getAll" {
+                return None;
+            }
+            let current = selected.lock();
+            let count = if polls.fetch_add(1, Ordering::SeqCst) == 0 { 1 } else { current.len() };
+            Some(json!(
+                current
+                    .iter()
+                    .take(count)
+                    .map(|u| uri_of(Path::new(u.strip_prefix("file://").unwrap()).parent().unwrap())
+                        .replacen("file:///", "file:/", 1))
+                    .collect::<Vec<_>>()
+            ))
+        }
+    }));
+    selected.lock().push(b.clone());
+    state.errors.lock().insert("workspace/executeCommand".into(), (-32001, "temporarily busy".into()));
+    h.mgr.reconfigure().await;
+    assert_eq!(state.launches.load(Ordering::SeqCst), 1);
+    state.errors.lock().clear();
+    h.mgr.reconfigure().await;
+    let changes = || {
+        state
+            .requested("workspace/executeCommand")
+            .into_iter()
+            .filter(|p| p["command"] == "java.project.changeImportedProjects")
+            .collect::<Vec<_>>()
+    };
+    let calls = changes();
+    assert_eq!(calls.len(), 2, "failed changes remain pending");
+    assert!(polls.load(Ordering::SeqCst) >= 2, "wait for asynchronous import before committing the configuration");
+    assert_eq!(calls[1]["arguments"], json!([[b], [uri_of(&h.root.join("a"))], []]));
+    *selected.lock() = vec![a.clone()];
+    h.mgr.refresh_java_project_configs(&h.root).await.unwrap();
+    assert_eq!(
+        changes().last().unwrap()["arguments"],
+        json!([[], [uri_of(&h.root.join("a"))], [uri_of(&h.root.join("b"))]])
+    );
+    h.mgr.refresh_java_project_configs(&h.root).await.unwrap();
+    assert_eq!(changes().len(), 3, "unchanged descriptor lists do not reimport projects");
+    eventually(|| !state.notified("java/projectConfigurationsUpdate").is_empty()).await;
+    assert_eq!(state.launches.load(Ordering::SeqCst), 1);
+    assert_eq!(state.notified("textDocument/didOpen").len(), 1);
+}

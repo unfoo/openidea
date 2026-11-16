@@ -82,8 +82,28 @@ impl Watcher {
         on_change: OnChange,
         mode: WatchMode,
     ) -> IdeResult<Self> {
+        Self::start_filtered(root, excludes, sink, on_change, mode, None)
+    }
+
+    /// Observes one explicitly selected metadata file, including ignored paths.
+    /// Watching its parent preserves delivery across atomic file replacement.
+    pub fn start_file(file: &Path, on_change: OnChange) -> IdeResult<Self> {
+        let parent = file.parent().ok_or_else(|| IdeError::invalid("watched file needs a parent directory"))?;
+        let name = file.file_name().ok_or_else(|| IdeError::invalid("watched file needs a name"))?;
+        Self::start_filtered(parent, Vec::new(), Arc::new(ide_core::NullSink), on_change, WatchMode::Flat, Some(name))
+    }
+
+    fn start_filtered(
+        root: &Path,
+        excludes: Vec<String>,
+        sink: SharedSink,
+        on_change: OnChange,
+        mode: WatchMode,
+        explicit_file: Option<&std::ffi::OsStr>,
+    ) -> IdeResult<Self> {
         let root = dunce::canonicalize(root)?;
-        let filter = EventFilter::new(root.clone(), &excludes);
+        let mut filter = EventFilter::new(root.clone(), &excludes);
+        filter.explicit_file = explicit_file.map(|name| root.join(name));
         let shared = filter.excludes.clone();
         let rules = filter.gitignore.clone();
         let emit: Emit = Arc::new(move |batch: &FsBatch| {
@@ -555,6 +575,7 @@ fn merge(prev: Option<Change>, next: Change) -> Change {
 #[derive(Clone)]
 pub(crate) struct EventFilter {
     root: PathBuf,
+    explicit_file: Option<PathBuf>,
     excludes: SharedExcludes,
     gitignore: Arc<GitignoreStack>,
 }
@@ -562,6 +583,7 @@ pub(crate) struct EventFilter {
 impl EventFilter {
     pub fn new(root: PathBuf, excludes: &[String]) -> Self {
         Self {
+            explicit_file: None,
             gitignore: Arc::new(GitignoreStack::new(&root)),
             excludes: Arc::new(RwLock::new(ExcludeMatcher::new(excludes))),
             root,
@@ -638,6 +660,9 @@ impl EventFilter {
 
     /// Whether a path found by scanning a new directory would be reported.
     fn is_reported(&self, path: &Path, is_dir: bool) -> bool {
+        if let Some(file) = &self.explicit_file {
+            return path == file && !is_dir;
+        }
         let Ok(rel) = path.strip_prefix(&self.root) else { return false };
         Self::git_internal(rel).is_none()
             && !self.excludes.read().is_excluded(rel)
@@ -730,6 +755,9 @@ impl EventFilter {
         let mut batch = FsBatch::default();
         let mut excluded_dirs = BTreeSet::new();
         for (path, change) in changes {
+            if self.explicit_file.as_ref().is_some_and(|file| file != &path) {
+                continue;
+            }
             if change == Change::Vcs {
                 batch.vcs.push(path);
                 continue;
@@ -760,7 +788,9 @@ impl EventFilter {
                 // itself — reporting one extra file removal is harmless.
                 let self_excluded = (is_dir || change == Change::Removed)
                     && (self.excludes.read().is_match(rel) || self.gitignore.is_ignored_self(&path, true));
-                if !self_excluded && (self.excludes.read().is_excluded(rel) || self.gitignore.is_ignored(&path, is_dir))
+                if self.explicit_file.is_none()
+                    && !self_excluded
+                    && (self.excludes.read().is_excluded(rel) || self.gitignore.is_ignored(&path, is_dir))
                 {
                     // Only a file appearing or going changes what the folder lists.
                     if change != Change::Modified {

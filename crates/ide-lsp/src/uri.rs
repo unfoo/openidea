@@ -56,7 +56,11 @@ pub fn path_to_uri(path: &Path) -> lsp_types::Uri {
 /// host names a share (`file://server/share/p` → `\\server\share\p`) and the
 /// drive letter is upper-cased, as the rest of the IDE spells it.
 pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
-    let rest = uri.strip_prefix("file://").or_else(|| uri.strip_prefix("FILE://"))?;
+    let rest = uri
+        .strip_prefix("file://")
+        .or_else(|| uri.strip_prefix("FILE://"))
+        .or_else(|| uri.strip_prefix("file:").filter(|rest| rest.starts_with('/')))
+        .or_else(|| uri.strip_prefix("FILE:").filter(|rest| rest.starts_with('/')))?;
     let (host, path) = rest.split_at(rest.find('/')?);
     let local = host.is_empty() || host.eq_ignore_ascii_case("localhost");
     let path = path.split(['?', '#']).next().unwrap_or(path);
@@ -106,6 +110,7 @@ mod tests {
         assert_eq!(path_to_uri_string(Path::new("/a b")), "file:///a%20b");
         assert_eq!(uri_to_path("file://localhost/x/y"), Some(PathBuf::from("/x/y")));
         assert_eq!(uri_to_path("file:///x/%C3%BC"), Some(PathBuf::from("/x/ü")));
+        assert_eq!(uri_to_path("file:/x/%C3%BC/"), Some(PathBuf::from("/x/ü/")));
         assert_eq!(uri_to_path("jdt://contents/x"), None);
     }
 

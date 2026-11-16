@@ -22,6 +22,7 @@ pub(crate) mod configuration;
 mod formatter;
 mod hierarchy;
 pub(crate) mod jvm_inspect;
+pub(crate) mod projects;
 pub(crate) mod reserved_names;
 pub use formatter::configure_formatter;
 /// First start imports the Maven / Gradle model, which can take minutes.
